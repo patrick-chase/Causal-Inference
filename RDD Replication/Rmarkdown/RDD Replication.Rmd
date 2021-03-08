@@ -1,0 +1,194 @@
+---
+title: "RDD replication"
+author: "Patrick Chase"
+date: "3/5/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+2. Hansen was ultimately attempting to identify if BAC thresholds were impacting DUI recidivism. He was able to get 16 years worth of DUI records from Washington state. He relied on the RDD to estimate various model and analyze the causal effect of the BAC thresholds on recidivism within the next four years from initial offense. He concludes that the BAC thresholds do decrease recidivism, however, very modestly in my opinion. 
+
+
+```{r}
+library(tidyverse)
+library(rdd)
+library(fastDummies)
+library(recipes)
+library(stargazer)
+library(rddensity)
+library(broom) 
+library(rdrobust) 
+
+
+
+read.csv("https://raw.githubusercontent.com/scunning1975/causal-inference-class/master/Data/hansen_dwi.csv")
+```
+
+3. 
+Generating dummy variable using bac1>= 0.08
+```{r #3, warning=TRUE}
+hansen_dwi$dumbac <- ifelse(hansen_dwi$bac1 >= .08, 1, 0)
+
+ggplot(data = hansen_dwi, 
+       mapping = aes(x = bac1,
+                     y = dumbac, 
+                     color = dumbac)) +
+  geom_point(alpha = .1, position = position_jitter(width = 0 , height = .3))
+```
+4. 
+Recreating Figure 1   
+```{r}
+## Figure 1 code start 
+ggplot(data = hansen_dwi) +
+  geom_histogram(aes(x=bac1), binwidth = .001) + 
+  geom_vline(xintercept = .08, color = "red", size = .5) 
+   ggtitle("BAC Histogram")+
+  theme(plot.title = element_text(hjust = 0.5)) 
+## Figure 1 code end
+
+
+```
+
+```{r}
+ggplot(data = hansen_dwi, 
+       mapping = aes(x = bac1,
+                     y = dumbac, 
+                     color = dumbac)) +
+  geom_point(alpha = .1, position = position_jitter(width = 0 , height = .3))
+```
+
+
+McCrary Density Test
+```{r}
+mcc_test <- rdplotdensity(rdd = rddensity(X = hansen_dwi$bac1, c = .08), 
+              X = hansen_dwi$bac1)
+```
+No discontinuity at cut off = .08
+
+
+```{r}
+
+
+
+ 
+```
+
+
+5. 
+Recreating table 2 panal A 
+```{r}
+
+hansen_dwi <- hansen_dwi %>% mutate(bac = bac1 - .08)
+
+mod.a <- lm(dumbac ~ male + white + aged + acc, 
+            data = hansen_dwi)
+tidy(mod.a)
+```
+I'm pretty sure this indicates that the covariats are balance at the cutt off but i'm struggling with the interpretation. 
+
+
+
+6. 
+Recreating Figure 2
+** I tried for hours to get my y-axis correct for this one but I'm honestly not sure what it is in Hansen's paper or what I'm supposed to be aiming for in this work. I'm pretty sure that it's supposed to be a representation of frequency but I ended up just using recidivism. Additionally, I'm not really sure how to panel them to be as nice looking as what's in the paper. That said, I've given the old college try with the plots below. 
+```{r}
+fig.2.acc <- hansen_dwi %>% 
+  filter(acc == 1)
+fig.2.male <- hansen_dwi %>% 
+  filter(male == 1)
+fig.2.age <- hansen_dwi %>% 
+  filter(aged > 0)
+fig.2.white <- hansen_dwi %>% 
+  filter(white == 1)
+
+
+```
+
+filtering on accident
+```{r}
+rdplot(y = fig.2.acc$recidivism,
+       x = fig.2.acc$bac1,
+       c = .08)
+```
+
+filtering on male
+```{r}
+rdplot(y = fig.2.male$recidivism,
+       x = fig.2.male$bac1,
+       c = .08)
+```
+
+
+
+filtering on age
+```{r}
+rdplot(y = fig.2.age$recidivism,
+       x = fig.2.age$bac1,
+       c = .08)
+```
+
+filtering on white
+```{r}
+rdplot(y = fig.2.white$recidivism,
+       x = fig.2.white$bac1,
+       c = .08)
+```
+
+7. 
+Column 1: control for the bac1 linearly
+Column 2: interact bac1 with cutoff linearly
+Column 3: interact bac1 with cutoff linearly and as a quadratic
+
+```{r}
+hansen_dwi <- hansen_dwi %>% mutate(bac_sq = bac1^2)
+p.a <- hansen_dwi %>% 
+  filter(bac1 > 0.03 & bac1 < 0.13)
+c.1 <-  lm(recidivism ~ bac1, data = p.a )
+tidy(c.1)
+
+c.2 <-  lm(recidivism ~ bac1*dumbac + dumbac, data = p.a )
+tidy(c.2)
+
+c.3 <-  lm(recidivism ~ bac1*dumbac + bac_sq + dumbac, data = p.a )
+tidy(c.3)
+##
+p.b <- hansen_dwi %>% 
+  filter(bac1 > 0.055 & bac1 < 0.105)
+c.4 <-  lm(recidivism ~ bac1, data = p.b )
+tidy(c.1)
+
+
+c.5 <-  lm(recidivism ~ bac1*dumbac + dumbac, data = p.b )
+tidy(c.2)
+
+
+
+c.6 <-  lm(recidivism ~ bac1*dumbac + bac_sq + dumbac, data = p.b )
+tidy(c.3)
+
+
+
+```
+
+
+
+
+
+8. 
+Recreating Figure 3 panel a
+** I couldn't figure out how to differentiate between a linear model and a quadratic model in my code. 
+```{r}
+fig.3.rep <- hansen_dwi %>% 
+  filter(bac1 < .15)
+
+rdplot(y = fig.3.rep$recidivism, 
+       x = fig.3.rep$bac1, 
+       c = .08)
+```
+
+9. 
+I learned that, like many conclusions one can draw from data, that this causal effect is probably highly reliant on the context of any given situation. I'm pretty sure all of this is average treatment effect, which I think a lot of people tend overlook how this should be emphasized. Average, sort of definitionally, implies that the effect will be probably be greater or lesser for any given individual then what is reported here. I also learned that R syntax can be fickle. We tested the hypothesis that BAC thresholds were impacting recidivism, specifically .08 in this context. Granted, I'm relatively confident I did so poorly. As far as Hansen's conclusions, I'd say they are probably accurate but I'd like to see replications done with modern data and some additional controlling for county and/or geographic regions. The DUI landscape in Okanogan county vs that of Snohomish or King county is very different. Okanogan, and much of eastern Washington, is incredibly rural with effectively no public transit and less opportunities to receive treatment for alcoholism. I think these factors likely play a role and disaggregating would be useful from a policy perspective because all of these policies are enforced at the county and municipal level. 
+
+
